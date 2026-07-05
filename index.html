@@ -140,7 +140,7 @@
   }
   .onboarding-section h3{margin:0 0 6px; font-size:15px;}
   .onboarding-section p{margin:0; font-size:13px; color:var(--fg-dim); line-height:1.6;}
-  .select-header h1{font-family:'Noto Serif KR'; font-size:24px; margin:0 0 6px; font-weight:700;}
+  .select-header h1{font-family:'Noto Serif KR'; font-size:24px; margin:0 0 6px; font-weight:900;}
   .select-header p{margin:0; font-size:12.5px; color:var(--fg-dim);}
 
   .ticket-grid{display:flex; flex-direction:column; gap:10px;}
@@ -159,7 +159,8 @@
   .ticket .t-left{display:flex; flex-direction:column; gap:5px; padding-left:8px;}
   .ticket .t-num{font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--fg-dimmer); font-weight:700;}
   .ticket .t-name{font-family:'Noto Serif KR'; font-size:17px; font-weight:700;}
-  .pin-ico{margin-right:4px; color:var(--gold);}
+  .pin-ico{color:var(--gold); width:15px; height:15px;}
+  .t-fav-row{line-height:1; margin-bottom:2px;}
   .ticket .t-meta{font-size:11.5px; color:var(--fg-dim); display:flex; gap:8px; align-items:center;}
   .ticket .t-right{display:flex; flex-direction:column; align-items:flex-end; gap:4px;}
 
@@ -169,7 +170,7 @@
      stay correct at any rendered size, not just the 200px reference. */
   .folder-ticket{
     aspect-ratio:1/1; padding:0; align-items:stretch; justify-content:flex-start;
-    background:none; border:none;
+    background:none; border:none; container-type:inline-size;
   }
   .folder-ticket::before{display:none;}
   .folder-ticket .folder-art{
@@ -177,16 +178,16 @@
   }
   .folder-ticket .t-left{
     position:absolute; z-index:1; width:calc(100% - 24px);
-    display:flex; flex-direction:column; gap:5px;
+    display:flex; flex-direction:column; gap:2.5cqw;
   }
   /* Shape X (Classic): 20px up from bottom, 50px from left, on a 200px reference tile */
   .folder-ticket[data-folder-shape="x"] .t-left{ left:25%; bottom:10%; }
   /* Shape Y (Frosted): left matches Z's, bottom matches X's, per request */
   .folder-ticket[data-folder-shape="y"] .t-left{ left:10%; bottom:10%; }
-  /* Shape Z (Layered): 50px up from bottom, 20px from left */
-  .folder-ticket[data-folder-shape="z"] .t-left{ left:10%; bottom:25%; }
-  .folder-ticket .t-name{color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.4);}
-  .folder-ticket .t-meta{color:rgba(255,255,255,0.85); text-shadow:0 1px 2px rgba(0,0,0,0.4);}
+  /* Shape Z (Layered): matched to Y's offset per request, both now sit at the same bottom position */
+  .folder-ticket[data-folder-shape="z"] .t-left{ left:10%; bottom:10%; }
+  .folder-ticket .t-name{color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.4); font-size:8.5cqw;}
+  .folder-ticket .t-meta{color:rgba(255,255,255,0.85); text-shadow:0 1px 2px rgba(0,0,0,0.4); font-size:5.75cqw;}
   .ticket .t-acc{font-family:'Noto Serif KR'; font-size:20px; font-weight:900;}
   .ticket .t-acc.na{color:var(--fg-dimmer); font-size:13px; font-weight:600; font-family:'Inter';}
   .ticket .t-flag{font-size:10.5px; color:var(--red); font-weight:700; display:flex; align-items:center; gap:3px;}
@@ -246,6 +247,40 @@
   .sheet-option .label{font-weight:700; font-size:13.5px;}
   .sheet-option .desc{font-size:11px; color:var(--fg-dim); margin-top:2px;}
   .sheet-cancel{width:100%; text-align:center; padding:12px; color:var(--fg-dim); background:none; border:none; font-size:13px; font-family:'Inter'; cursor:pointer;}
+
+  /* Slide-out side menu: overlays with a dim backdrop, panel slides in from the right.
+     Full-screen takeover below 640px (mobile); a fixed-width partial panel above that. */
+  .side-menu-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:60;
+    opacity:0; pointer-events:none; transition:opacity .2s ease;
+  }
+  .side-menu-overlay.open{opacity:1; pointer-events:auto;}
+  .side-menu-panel{
+    position:fixed; top:0; right:0; height:100%; width:100%; max-width:400px;
+    background:var(--bg); border-left:1px solid var(--panel-border);
+    transform:translateX(100%); transition:transform .25s ease;
+    display:flex; flex-direction:column; overflow-y:auto;
+  }
+  .side-menu-overlay.open .side-menu-panel{transform:translateX(0);}
+  @media (max-width:639px){
+    .side-menu-panel{max-width:100%;}
+  }
+  .side-menu-header{
+    display:flex; align-items:center; justify-content:space-between; padding:18px 18px 14px;
+    border-bottom:1px solid var(--panel-border); flex-shrink:0;
+  }
+  .side-menu-header h2{font-family:'Noto Serif KR'; font-size:19px; margin:0;}
+  .side-menu-close{background:none; border:none; color:var(--fg-dim); cursor:pointer; padding:6px;}
+  .side-menu-body{padding:18px; display:flex; flex-direction:column; gap:22px; flex:1;}
+  .side-menu-section{display:flex; flex-direction:column; gap:8px;}
+  .side-menu-section-label{font-size:11px; letter-spacing:0.1em; color:var(--fg-dimmer); font-weight:700; margin-bottom:2px;}
+  /* Must sit above the side menu (z-index 60) since it's opened FROM the menu and
+     should always appear in front of it, not underneath. */
+  .folder-editor-overlay{z-index:70;}
+  @media (max-width:639px){
+    .folder-editor-overlay{align-items:stretch;}
+    .folder-editor-sheet{max-width:100%; height:100%; border-radius:0; overflow-y:auto; display:flex; flex-direction:column; justify-content:center;}
+  }
   .shortcut-list{display:flex; flex-direction:column; gap:10px; margin:14px 0;}
   .shortcut-row{display:flex; align-items:center; gap:12px; font-size:13.5px;}
   .shortcut-row .key{
@@ -545,6 +580,10 @@
     libraryIndex: [],      // [{id, name, updatedAt}]
     newDeckPromptOpen: false,
     newDeckDraftFolder: null,
+    newDeckDraftName: '',
+    sideMenuOpen: false,
+    sideMenuContext: null, // 'deck' | 'library'
+    folderEditorOpen: false,
     appName: 'Vocab Drill',
     editingAppName: false,
     welcomeNameDraft: '',
@@ -792,12 +831,12 @@
           state.saveErrorDetail = null;
           state.saveErrorPayloadSize = null;
         }
-        if(state.screen === 'manage') render();
+        if(state.sideMenuOpen) render();
       }).catch(function(err){
         state.storageStatus = 'unavailable';
         state.saveErrorDetail = (err && (err.message || String(err))) || 'unknown error';
         state.saveErrorPayloadSize = payload.length;
-        if(state.screen === 'manage') render();
+        if(state.sideMenuOpen) render();
       });
     }, 350);
     scheduleLibraryIndexUpdate();
@@ -807,6 +846,12 @@
     state.activeDeckId = id;
     state.rawInput = '';
     state.loadDeckError = false;
+    // Opening an existing deck implicitly abandons any in-progress "new deck" prompt --
+    // without this, navigating away without hitting Cancel left it silently open,
+    // reappearing exactly as you'd left it whenever you came back to the library.
+    state.newDeckPromptOpen = false;
+    state.newDeckDraftFolder = null;
+    state.newDeckDraftName = '';
     storage.get(deckKey(id)).then(function(res){
       state.storageStatus = 'ok';
       state.chapters = {}; state.chapterOrder = []; state.deckName = '';
@@ -1593,6 +1638,53 @@
   // previewSeed: a stable string for gradient-id uniqueness (deck id if editing, or any fixed string while drafting a new one).
   var folderPickerChangeTimers = {};
   var folderPickerPendingCfg = {};
+  // Folder appearance editor: an explicit-save overlay (desktop) / full-screen (mobile)
+  // wrapping the existing picker. Changes only commit to storage when Save is tapped --
+  // the picker's own live-preview still works, but its debounced onChange is redirected
+  // to a local draft instead of persisting immediately, since this is a deliberate
+  // "open, adjust, confirm" flow rather than the picker's usual live-edit behavior.
+  var folderEditorDrafts = {};
+  // Folder appearance editor: an explicit-save overlay (desktop) / full-screen (mobile)
+  // wrapping the existing picker. Changes only commit to storage when Save is tapped --
+  // the picker's own live-preview still works, but its onChange is redirected to a local
+  // draft instead of persisting immediately, since this is a deliberate "open, adjust,
+  // confirm" flow rather than the picker's usual live-edit behavior.
+  //
+  // The draft must survive across re-renders (keyed at module scope, not a local var
+  // rebuilt on every call) because every chip click inside the picker calls render()
+  // immediately, which would otherwise tear down this function and reconstruct a fresh
+  // draft from the deck's still-unsaved pinEntry -- silently discarding whatever was just
+  // clicked before the change ever had a chance to reach Save. Same class of bug as the
+  // picker's own debounce timer needing to live outside this function's closure.
+  function renderFolderEditor(){
+    var pinEntry = state.libraryIndex.find(function(d){ return d.id === state.activeDeckId; });
+    if(!pinEntry) { state.folderEditorOpen = false; return el('div'); }
+    if(!folderEditorDrafts[state.activeDeckId]){
+      folderEditorDrafts[state.activeDeckId] = {folderShape: pinEntry.folderShape||'x', folderStyle: pinEntry.folderStyle||'bright', folderHue: pinEntry.folderHue||0};
+    }
+    var draft = folderEditorDrafts[state.activeDeckId];
+
+    var overlay = el('div',{class:'sheet-overlay folder-editor-overlay', onclick:function(e){ if(e.target===e.currentTarget){ state.folderEditorOpen=false; delete folderEditorDrafts[state.activeDeckId]; render(); } }});
+    var sheet = el('div',{class:'sheet folder-editor-sheet'});
+    sheet.appendChild(el('h3',{},[text('EDIT FOLDER APPEARANCE')]));
+    sheet.appendChild(renderFolderPicker(draft, function(cfg){ draft.folderShape=cfg.folderShape; draft.folderStyle=cfg.folderStyle; draft.folderHue=cfg.folderHue; }, state.activeDeckId+'-editor'));
+    sheet.appendChild(el('div',{class:'options-bar', style:'margin-top:10px;'},[
+      el('button',{class:'primary-btn', style:'flex:1;', onclick:function(){
+        pinEntry.folderShape = draft.folderShape;
+        pinEntry.folderStyle = draft.folderStyle;
+        pinEntry.folderHue = draft.folderHue;
+        saveLibraryIndex();
+        state.folderEditorOpen = false;
+        delete folderEditorDrafts[state.activeDeckId];
+        render();
+        showToast('Folder look saved~');
+      }},[icon('check_circle'), text(' Save')]),
+      el('button',{class:'ghost-btn', onclick:function(){ state.folderEditorOpen=false; delete folderEditorDrafts[state.activeDeckId]; render(); }},[text('Cancel')])
+    ]));
+    overlay.appendChild(sheet);
+    return overlay;
+  }
+
   function renderFolderPicker(cfg, onChange, previewSeed){
     // If an earlier change for this exact picker is still debouncing, build on top of
     // that pending config rather than the (possibly stale) cfg just passed in -- since
@@ -1686,12 +1778,158 @@
     else if(state.screen === 'exportPicker') main.appendChild(renderExportPicker());
     else if(state.screen === 'drill') main.appendChild(renderDrillRouter());
     else if(state.screen === 'summary') main.appendChild(renderSummary());
-    else if(state.screen === 'manage') main.appendChild(renderManage());
     app.appendChild(main);
     if(state.modeSheet) app.appendChild(renderModeSheet());
     if(state.confirmDialog) app.appendChild(renderConfirmDialog());
     if(state.toast) app.appendChild(renderToast());
     if(state.showShortcutHint) app.appendChild(renderShortcutHint());
+    if(state.sideMenuOpen){
+      if(state.sideMenuContext === 'deck') app.appendChild(renderSideMenu('Deck Settings', buildDeckMenuBody));
+      else if(state.sideMenuContext === 'library') app.appendChild(renderSideMenu('Library', buildLibraryMenuBody));
+    }
+    if(state.folderEditorOpen) app.appendChild(renderFolderEditor());
+  }
+
+  // ---- Shared slide-out side menu mechanism ----
+  // One sliding panel component, fed different title/content depending on context
+  // (deck-level Settings vs. library-level menu) so both share the exact same
+  // animation, overlay, and mobile full-screen behavior rather than two implementations.
+  function renderSideMenu(title, buildBody){
+    var overlay = el('div',{class:'side-menu-overlay open', onclick:function(e){
+      if(e.target === e.currentTarget) closeSideMenu();
+    }});
+    var panel = el('div',{class:'side-menu-panel'});
+    panel.appendChild(el('div',{class:'side-menu-header'},[
+      el('h2',{},[text(title)]),
+      el('button',{class:'side-menu-close', onclick:closeSideMenu},[icon('arrow_back',{cls:'shuffle-flip'})])
+    ]));
+    var body = el('div',{class:'side-menu-body'});
+    buildBody(body);
+    panel.appendChild(body);
+    overlay.appendChild(panel);
+    return overlay;
+  }
+  function openSideMenu(context){
+    state.sideMenuOpen = true;
+    state.sideMenuContext = context;
+    render();
+  }
+  function closeSideMenu(){
+    state.sideMenuOpen = false;
+    state.sideMenuContext = null;
+    render();
+  }
+  function sideMenuSection(body, label, children){
+    var section = el('div',{class:'side-menu-section'});
+    if(label) section.appendChild(el('div',{class:'side-menu-section-label'},[text(label)]));
+    children.forEach(function(c){ if(c) section.appendChild(c); });
+    body.appendChild(section);
+  }
+
+  // Deck-level menu content -- the reorganized replacement for the old flat Settings panel.
+  function buildDeckMenuBody(body){
+    var statusText, statusColor;
+    if(state.storageStatus === 'ok'){
+      statusText = storage.isNative ? 'Auto-saving to this browser' : 'Auto-saving to this browser (local only — won\'t follow you to another device)';
+      statusColor = '';
+    }
+    else if(state.storageStatus === 'unavailable'){ statusText = 'Auto-save unavailable — export to keep progress'; statusColor = 'background:var(--red)'; }
+    else { statusText = 'Checking storage…'; statusColor = 'background:var(--fg-dimmer)'; }
+    body.appendChild(el('div',{class:'status-line'},[el('span',{class:'dot', style:statusColor}),text(statusText)]));
+    if(state.storageStatus === 'unavailable' && storage.isNative && state.saveErrorDetail){
+      body.appendChild(el('p',{style:'font-family:monospace; font-size:11px; opacity:0.6; margin:2px 0 0;'},[text('Detail: ' + state.saveErrorDetail + (state.saveErrorPayloadSize ? ' (payload: ' + state.saveErrorPayloadSize + ' chars)' : ''))]));
+    }
+
+    var pinEntry = state.activeDeckId ? state.libraryIndex.find(function(d){ return d.id === state.activeDeckId; }) : null;
+
+    // ---- Deck identity: favourite + folder appearance ----
+    if(pinEntry){
+      var isPinned = pinEntry.pinned;
+      var favIconSettings = icon(isPinned ? 'favorite_fill' : 'favorite');
+      favIconSettings.style.color = 'var(--red)';
+      sideMenuSection(body, 'DECK', [
+        el('button',{class:'toggle-chip'+(isPinned?' active':''), onclick:function(){ togglePin(state.activeDeckId); }},[favIconSettings, text(isPinned ? ' Favourited — tap to remove' : ' Favourite this deck')]),
+        el('button',{class:'toggle-chip', onclick:function(){ state.folderEditorOpen = true; render(); }},[icon('folder_copy'), text(' Edit folder appearance')])
+      ]);
+    }
+
+    // ---- Study preferences ----
+    var shortcutToggle = el('button',{class:'toggle-chip'+(state.keyboardShortcutsEnabled?' active':''), onclick:function(){
+      state.keyboardShortcutsEnabled = !state.keyboardShortcutsEnabled;
+      saveGlobalPrefs();
+      render();
+    }},[icon('keyboard_command_key'), text(' Keyboard shortcuts: ' + (state.keyboardShortcutsEnabled ? 'on' : 'off'))]);
+    var reminderToggle = state.keyboardShortcutsEnabled ? el('button',{class:'toggle-chip'+(!state.dismissShortcutHints?' active':''), onclick:function(){
+      state.dismissShortcutHints = !state.dismissShortcutHints;
+      saveGlobalPrefs();
+      render();
+    }},[icon('chat_dashed'), text(' Shortcut reminders: ' + (state.dismissShortcutHints ? 'off' : 'on'))]) : null;
+    var onboardingBtn = el('button',{class:'toggle-chip', onclick:function(){ state.sideMenuOpen=false; state.sideMenuContext=null; state.screen='onboarding'; render(); }},[icon('auto_stories'), text(' View onboarding')]);
+    sideMenuSection(body, 'STUDY PREFERENCES', [shortcutToggle, reminderToggle, onboardingBtn]);
+
+    // ---- Backup & sharing ----
+    var backupChildren = [];
+    if(state.chapterOrder.length > 0){
+      backupChildren.push(el('button',{class:'primary-btn', onclick:exportState},[icon('download'), text(' Export progress backup (.json)')]));
+      backupChildren.push(el('button',{class:'ghost-btn', onclick:function(){ state.exportSelection=[]; state.screen='exportPicker'; closeSideMenu(); }},[icon('folder_copy'), text(' Export a shareable set (.json)')]));
+    }
+    var fileInput2 = el('input',{type:'file', accept:'.json', style:'display:none', onchange:function(e){ if(e.target.files[0]) importStateFile(e.target.files[0]); }});
+    backupChildren.push(el('button',{class:'ghost-btn', onclick:function(){ fileInput2.click(); }},[icon('upload'), text(' Import a .json file')]));
+    backupChildren.push(fileInput2);
+    backupChildren.push(el('button',{class:'ghost-btn', onclick:function(){
+      askConfirm('Duplicate "' + (state.deckName||'this deck') + '"? A full copy (tabs, vocab, and progress) will be created as a new deck.', function(){
+        duplicateDeck(state.activeDeckId);
+      });
+    }},[icon('folder_copy'), text(' Duplicate this deck')]));
+    sideMenuSection(body, 'BACKUP & SHARING', backupChildren);
+
+    // ---- Danger zone: everything destructive lives together ----
+    var dangerChildren = [];
+    if(state.chapterOrder.length > 0){
+      dangerChildren.push(el('div',{class:'reset-progress-zone'},[
+        el('div',{class:'dz-title', style:'color:var(--fg-dim);'},[text('RESET PROGRESS ONLY')]),
+        el('p',{style:'font-size:12px; color:var(--fg-dim); margin:0 0 2px;'},[text('Clears seen/correct/wrong stats and bookmarks on every word — keeps all your tabs and vocab exactly as they are.')]),
+        el('button',{class:'ghost-btn', onclick:function(){
+          askConfirm('Reset stats (seen/correct/wrong/bookmarks) on every word? Your chapters and vocab stay untouched.', function(){
+            var result = resetAllProgress();
+            saveToStorage();
+            state.screen = 'select';
+            closeSideMenu();
+            showToast('Progress reset on ' + result.wordCount + ' word' + (result.wordCount===1?'':'s') + ' — all fresh now~');
+          });
+        }},[icon('history'), text(' Reset progress only')])
+      ]));
+    }
+    dangerChildren.push(el('div',{class:'danger-zone'},[
+      el('div',{class:'dz-title'},[text('DELETE THIS DECK')]),
+      el('p',{style:'font-size:12px; color:var(--fg-dim); margin:0 0 2px;'},[text('Removes "' + (state.deckName || 'this deck') + '" entirely and takes you back to your library list.')]),
+      el('button',{class:'ghost-btn', style:'border-color:rgba(193,68,46,0.4); color:var(--red);', onclick:function(){
+        askConfirm('Delete "' + (state.deckName||'this deck') + '" entirely? All its tabs and progress will be lost unless you exported a backup.', function(){
+          var id = state.activeDeckId;
+          deleteDeckEntirely(id);
+          state.screen = 'library';
+          closeSideMenu();
+        });
+      }},[icon('delete'), text(' Delete this deck')])
+    ]));
+    dangerChildren.push(el('div',{class:'danger-zone'},[
+      el('div',{class:'dz-title'},[text('WIPE EVERYTHING, START FRESH')]),
+      el('p',{style:'font-size:12px; color:var(--fg-dim); margin:0 0 2px;'},[text('Deletes every library, all progress, and every saved preference. Takes you back to the very first welcome screen. This can\'t be undone unless you\'ve exported backups.')]),
+      el('button',{class:'ghost-btn', style:'border-color:rgba(193,68,46,0.4); color:var(--red);', onclick:function(){
+        askConfirm('Wipe absolutely everything and start over from scratch? All libraries, all progress, and all settings will be gone for good.', function(){
+          wipeEverything();
+        });
+      }},[icon('bomb'), text(' Wipe everything, start fresh')])
+    ]));
+    sideMenuSection(body, 'DANGER ZONE', dangerChildren);
+  }
+
+  // Library-level menu content -- placeholder for now; full content (whole-library
+  // export/import, restore-on-launch option) comes in a later pass.
+  function buildLibraryMenuBody(body){
+    sideMenuSection(body, null, [
+      el('p',{style:'color:var(--fg-dim); font-size:13px;'},[text('More library-wide options are coming here soon.')])
+    ]);
   }
 
   function renderShortcutHint(){
@@ -1739,7 +1977,7 @@
       actions.appendChild(el('button',{class:'icon-btn', title:'Switch library', onclick:goToLibrary},[icon('dataset'), text(' LIBRARY')]));
     }
     if(state.screen === 'select' || state.screen === 'loader'){
-      actions.appendChild(el('button',{class:'icon-btn', title:'Settings', onclick:function(){ state.screen='manage'; render(); }},[icon('menu')]));
+      actions.appendChild(el('button',{class:'icon-btn', title:'Settings', onclick:function(){ openSideMenu('deck'); }},[icon('menu')]));
     }
     var brandChildren;
     if(state.screen === 'library' || !state.activeDeckId){
@@ -1950,30 +2188,12 @@
       el('p',{},[text(state.libraryIndex.length ? 'Pick a deck to study or create a new one.' : 'No decks yet — start your first one below.')])
     ]));
 
-    if(state.newDeckPromptOpen){
-      if(!state.newDeckDraftFolder) state.newDeckDraftFolder = randomFolderConfig();
-      var nameInput = el('input',{class:'word-edit-input', placeholder:'e.g. 5A 어휘, grad med terms, IELTS C1', autofocus:true, style:'margin-bottom:10px;',
-        onkeydown:function(e){ if(e.key==='Enter'){ e.target.blur(); confirmNewDeck(e.target.value); } }
-      });
-      wrap.appendChild(el('div',{class:'reset-progress-zone'},[
-        el('div',{class:'dz-title', style:'color:var(--fg-dim);'},[text('NEW DECK')]),
-        nameInput,
-        renderFolderPicker(state.newDeckDraftFolder, function(){}, 'newdeck-draft'),
-        el('div',{class:'options-bar'},[
-          el('button',{class:'primary-btn', style:'flex:1;', onclick:function(){ confirmNewDeck(nameInput.value); }},[text('Create '), icon('arrow_forward')]),
-          el('button',{class:'ghost-btn', onclick:function(){ state.newDeckPromptOpen=false; state.newDeckDraftFolder=null; render(); }},[text('Cancel')])
-        ])
-      ]));
-    } else {
-      wrap.appendChild(el('button',{class:'primary-btn', onclick:function(){ state.newDeckPromptOpen=true; state.newDeckDraftFolder=null; render(); setTimeout(function(){ var i=document.querySelector('.word-edit-input'); if(i) i.focus(); },0); }},[text('+ NEW DECK')]));
-    }
-
     var sorted = state.libraryIndex.slice().sort(function(a,b){
       var pinDiff = (b.pinned?1:0) - (a.pinned?1:0);
       if(pinDiff !== 0) return pinDiff;
       return (b.updatedAt||0) - (a.updatedAt||0);
     });
-    var grid = el('div',{class:'ticket-grid deck-grid', style:'margin-top:16px;'});
+    var grid = el('div',{class:'ticket-grid deck-grid'});
     sorted.forEach(function(d){
       var wordCount = d.wordCount || 0;
       var chapterCount = d.chapterCount || 0;
@@ -1986,18 +2206,40 @@
       var ticket = el('div',{class:'ticket folder-ticket'+(d.pinned?' pinned':''), 'data-folder-shape':(d.folderShape || 'x'), onclick:function(){ loadDeck(d.id); }},[
         renderFolder(d.folderShape || 'x', d.folderStyle || 'bright', d.folderHue || 0, d.id),
         el('div',{class:'t-left'},[
-          el('div',{class:'t-name kr'},[favIcon, text(d.name || 'Untitled deck')]),
+          favIcon ? el('div',{class:'t-fav-row'},[favIcon]) : null,
+          el('div',{class:'t-name kr'},[text(d.name || 'Untitled deck')]),
           el('div',{class:'t-meta'},[text(chapterCount + (chapterCount===1?' tab':' tabs') + ' · ' + wordCount + (wordCount===1?' word':' words'))])
         ])
       ]);
       grid.appendChild(ticket);
     });
     wrap.appendChild(grid);
+
+    if(state.newDeckPromptOpen){
+      if(!state.newDeckDraftFolder) state.newDeckDraftFolder = randomFolderConfig();
+      var nameInput = el('input',{class:'word-edit-input', placeholder:'e.g. 5A 어휘, grad med terms, IELTS C1', autofocus:true, style:'margin-bottom:10px;', value: state.newDeckDraftName,
+        oninput:function(e){ state.newDeckDraftName = e.target.value; },
+        onkeydown:function(e){ if(e.key==='Enter'){ e.target.blur(); confirmNewDeck(e.target.value); } }
+      });
+      wrap.appendChild(el('div',{class:'reset-progress-zone', style:'margin-top:16px;'},[
+        el('div',{class:'dz-title', style:'color:var(--fg-dim);'},[text('NEW DECK')]),
+        nameInput,
+        renderFolderPicker(state.newDeckDraftFolder, function(){}, 'newdeck-draft'),
+        el('div',{class:'options-bar'},[
+          el('button',{class:'primary-btn', style:'flex:1;', onclick:function(){ confirmNewDeck(state.newDeckDraftName); }},[text('Create '), icon('arrow_forward')]),
+          el('button',{class:'ghost-btn', onclick:function(){ state.newDeckPromptOpen=false; state.newDeckDraftFolder=null; state.newDeckDraftName=''; render(); }},[text('Cancel')])
+        ])
+      ]));
+    } else {
+      wrap.appendChild(el('button',{class:'primary-btn', style:'margin-top:16px;', onclick:function(){ state.newDeckPromptOpen=true; state.newDeckDraftFolder=null; state.newDeckDraftName=''; render(); setTimeout(function(){ var i=document.querySelector('.word-edit-input'); if(i) i.focus(); },0); }},[text('+ NEW DECK')]));
+    }
+
     return wrap;
   }
   function confirmNewDeck(name){
     name = (name||'').trim();
     state.newDeckPromptOpen = false;
+    state.newDeckDraftName = '';
     createNewDeck(name);
   }
 
@@ -2377,7 +2619,7 @@
   }
   function renderExportPicker(){
     var wrap = el('div',{});
-    wrap.appendChild(el('button',{class:'back-link', onclick:function(){ state.screen='manage'; render(); }},[icon('arrow_back'), text(' Back')]));
+    wrap.appendChild(el('button',{class:'back-link', onclick:function(){ state.screen = state.chapterOrder.length ? 'select':'loader'; openSideMenu('deck'); }},[icon('arrow_back'), text(' Back')]));
     wrap.appendChild(el('div',{class:'select-header'},[
       el('h1',{},[text('Export a shareable set')]),
       el('p',{},[text('Pick which tabs to share. The file will have just the words — no progress, stats, or bookmarks — so whoever imports it starts fresh.')])
@@ -2631,116 +2873,6 @@
   }
 
   // ---- Manage screen ----
-  function renderManage(){
-    var wrap = el('div',{class:'manage-wrap'});
-    wrap.appendChild(el('button',{class:'back-link', onclick:function(){ state.screen = state.chapterOrder.length ? 'select':'loader'; render(); }},[icon('arrow_back'), text(' Back')]));
-    wrap.appendChild(el('h1',{},[text('Settings')]));
-    var statusText, statusColor;
-    if(state.storageStatus === 'ok'){
-      statusText = storage.isNative ? 'Auto-saving to this browser' : 'Auto-saving to this browser (local only — won\'t follow you to another device)';
-      statusColor = '';
-    }
-    else if(state.storageStatus === 'unavailable'){ statusText = 'Auto-save unavailable — export to keep progress'; statusColor = 'background:var(--red)'; }
-    else { statusText = 'Checking storage…'; statusColor = 'background:var(--fg-dimmer)'; }
-    wrap.appendChild(el('div',{class:'status-line'},[el('span',{class:'dot', style:statusColor}),text(statusText)]));
-    if(state.storageStatus === 'unavailable' && storage.isNative && state.saveErrorDetail){
-      wrap.appendChild(el('p',{style:'font-family:monospace; font-size:11px; opacity:0.6; margin:2px 0 0;'},[text('Detail: ' + state.saveErrorDetail + (state.saveErrorPayloadSize ? ' (payload: ' + state.saveErrorPayloadSize + ' chars)' : ''))]));
-    }
-
-    if(state.activeDeckId){
-      var pinEntry = state.libraryIndex.find(function(d){ return d.id === state.activeDeckId; });
-      var isPinned = pinEntry && pinEntry.pinned;
-      var favIconSettings = icon(isPinned ? 'favorite_fill' : 'favorite');
-      favIconSettings.style.color = 'var(--red)';
-      wrap.appendChild(el('button',{class:'toggle-chip'+(isPinned?' active':''), style:'margin-bottom:14px;', onclick:function(){ togglePin(state.activeDeckId); }},[favIconSettings, text(isPinned ? ' Favourited — tap to remove' : ' Favourite this deck')]));
-
-      if(pinEntry){
-        wrap.appendChild(el('div',{class:'dz-title', style:'color:var(--fg-dim); margin-bottom:6px;'},[text('FOLDER APPEARANCE')]));
-        wrap.appendChild(renderFolderPicker(
-          {folderShape: pinEntry.folderShape||'x', folderStyle: pinEntry.folderStyle||'bright', folderHue: pinEntry.folderHue||0},
-          function(cfg){
-            pinEntry.folderShape = cfg.folderShape;
-            pinEntry.folderStyle = cfg.folderStyle;
-            pinEntry.folderHue = cfg.folderHue;
-            saveLibraryIndex();
-          },
-          state.activeDeckId
-        ));
-      }
-    }
-
-    wrap.appendChild(el('button',{class:'toggle-chip'+(state.keyboardShortcutsEnabled?' active':''), style:'margin-bottom:8px;', onclick:function(){
-      state.keyboardShortcutsEnabled = !state.keyboardShortcutsEnabled;
-      saveGlobalPrefs();
-      render();
-    }},[icon('keyboard_command_key'), text(' Keyboard shortcuts: ' + (state.keyboardShortcutsEnabled ? 'on' : 'off'))]));
-
-    if(state.keyboardShortcutsEnabled){
-      wrap.appendChild(el('button',{class:'toggle-chip'+(!state.dismissShortcutHints?' active':''), style:'margin-bottom:14px;', onclick:function(){
-        state.dismissShortcutHints = !state.dismissShortcutHints;
-        saveGlobalPrefs();
-        render();
-      }},[icon('chat_dashed'), text(' Shortcut reminders: ' + (state.dismissShortcutHints ? 'off' : 'on'))]));
-    }
-
-    wrap.appendChild(el('button',{class:'toggle-chip', style:'margin-bottom:14px;', onclick:function(){ state.screen='onboarding'; render(); }},[icon('auto_stories'), text(' View onboarding')]));
-
-    wrap.appendChild(el('p',{},[text('Progress auto-saves as you drill. Export a full backup any time to move your progress to another device, or export a shareable set to hand your vocab (no progress attached) to someone else.')]));
-
-    if(state.chapterOrder.length > 0){
-      wrap.appendChild(el('button',{class:'primary-btn', onclick:exportState},[icon('download'), text(' Export progress backup (.json)')]));
-      wrap.appendChild(el('button',{class:'ghost-btn', style:'margin-top:8px;', onclick:function(){ state.exportSelection=[]; state.screen='exportPicker'; render(); }},[icon('folder_copy'), text(' Export a shareable set (.json)')]));
-    }
-    var fileInput2 = el('input',{type:'file', accept:'.json', style:'display:none', onchange:function(e){ if(e.target.files[0]) importStateFile(e.target.files[0]); }});
-    wrap.appendChild(el('button',{class:'ghost-btn', style:'margin-top:8px;', onclick:function(){ fileInput2.click(); }},[icon('upload'), text(' Import a .json file')]));
-    wrap.appendChild(fileInput2);
-
-    wrap.appendChild(el('button',{class:'ghost-btn', style:'margin-top:8px;', onclick:function(){
-      askConfirm('Duplicate "' + (state.deckName||'this deck') + '"? A full copy (tabs, vocab, and progress) will be created as a new deck.', function(){
-        duplicateDeck(state.activeDeckId);
-      });
-    }},[icon('folder_copy'), text(' Duplicate this deck')]));
-
-    if(state.chapterOrder.length > 0){
-      wrap.appendChild(el('div',{class:'reset-progress-zone'},[
-        el('div',{class:'dz-title', style:'color:var(--fg-dim);'},[text('RESET PROGRESS ONLY')]),
-        el('p',{style:'font-size:12px; color:var(--fg-dim); margin:0 0 2px;'},[text('Clears seen/correct/wrong stats and bookmarks on every word — keeps all your tabs and vocab exactly as they are.')]),
-        el('button',{class:'ghost-btn', onclick:function(){
-          askConfirm('Reset stats (seen/correct/wrong/bookmarks) on every word? Your chapters and vocab stay untouched.', function(){
-            var result = resetAllProgress();
-            saveToStorage();
-            state.screen = 'select';
-            render();
-            showToast('Progress reset on ' + result.wordCount + ' word' + (result.wordCount===1?'':'s') + ' — all fresh now~');
-          });
-        }},[icon('history'), text(' Reset progress only')])
-      ]));
-    }
-
-    wrap.appendChild(el('div',{class:'danger-zone'},[
-      el('div',{class:'dz-title'},[text('DELETE THIS LIBRARY')]),
-      el('p',{style:'font-size:12px; color:var(--fg-dim); margin:0 0 2px;'},[text('Removes "' + (state.deckName || 'this deck') + '" entirely and takes you back to your library list.')]),
-      el('button',{class:'ghost-btn', style:'border-color:rgba(193,68,46,0.4); color:var(--red);', onclick:function(){
-        askConfirm('Delete "' + (state.deckName||'this deck') + '" entirely? All its tabs and progress will be lost unless you exported a backup.', function(){
-          var id = state.activeDeckId;
-          deleteDeckEntirely(id);
-          state.screen = 'library';
-          render();
-        });
-      }},[icon('delete'), text(' Delete this deck')])
-    ]));
-
-    wrap.appendChild(el('div',{class:'danger-zone'},[
-      el('div',{class:'dz-title'},[text('WIPE EVERYTHING, START FRESH')]),
-      el('p',{style:'font-size:12px; color:var(--fg-dim); margin:0 0 2px;'},[text('Deletes every library, all progress, and every saved preference. Takes you back to the very first welcome screen. This can\'t be undone unless you\'ve exported backups.')]),
-      el('button',{class:'ghost-btn', style:'border-color:rgba(193,68,46,0.4); color:var(--red);', onclick:function(){
-        askConfirm('Wipe absolutely everything and start over from scratch? All libraries, all progress, and all settings will be gone for good.', function(){
-          wipeEverything();
-        });
-      }},[icon('bomb'), text(' Wipe everything, start fresh')])
-    ]));
-    return wrap;
-  }
 
   applyTheme();
   render();
