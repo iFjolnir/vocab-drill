@@ -582,6 +582,7 @@
     newDeckDraftFolder: null,
     newDeckDraftName: '',
     sideMenuOpen: false,
+    importCollision: null,
     sideMenuContext: null, // 'deck' | 'library'
     folderEditorOpen: false,
     appName: 'Vocab Drill',
@@ -712,6 +713,28 @@
       el('button',{class:'primary-btn', style:'background:var(--red); color:white;', onclick:function(){
         var fn = cd.onYes; state.confirmDialog=null; fn();
       }},[text('Yes, do it')])
+    ]));
+    overlay.appendChild(sheet);
+    return overlay;
+  }
+
+  // Three-choice prompt for resolving one colliding deck at a time during a library
+  // import, rather than the usual yes/no confirm dialog.
+  function renderImportCollisionDialog(){
+    var ic = state.importCollision;
+    var overlay = el('div',{class:'sheet-overlay', style:'z-index:80;'});
+    var sheet = el('div',{class:'sheet'});
+    sheet.appendChild(el('h3',{},[text('Deck already exists')]));
+    sheet.appendChild(el('p',{class:'sub'},[text('A deck named "' + ic.existing.name + '" already exists in your library. What do you want to do with the incoming copy?')]));
+    function choose(choice){
+      var fn = ic.onChoice;
+      state.importCollision = null;
+      fn(choice);
+    }
+    sheet.appendChild(el('div',{class:'options-bar', style:'flex-direction:column; gap:8px;'},[
+      el('button',{class:'ghost-btn', onclick:function(){ choose('skip'); }},[text('Skip — keep my existing deck')]),
+      el('button',{class:'ghost-btn', style:'border-color:rgba(193,68,46,0.4); color:var(--red);', onclick:function(){ choose('overwrite'); }},[text('Overwrite my existing deck')]),
+      el('button',{class:'primary-btn', onclick:function(){ choose('copy'); }},[text('Import as a copy ("' + ic.deck.name + '_copy")')])
     ]));
     overlay.appendChild(sheet);
     return overlay;
@@ -982,6 +1005,40 @@
     URL.revokeObjectURL(url);
   }
 
+  // Whole-library export: reads every deck's actual content from storage (only the
+  // currently-open deck lives in state.chapters at any given time -- everything else
+  // exists solely under its own storage key) and bundles all of them into one JSON file.
+  function exportWholeLibrary(){
+    var deckIds = state.libraryIndex.map(function(d){ return d.id; });
+    var reads = deckIds.map(function(id){
+      return storage.get(deckKey(id)).then(function(res){
+        var content = null;
+        if(res && res.value){ try{ content = JSON.parse(res.value); }catch(e){} }
+        var indexEntry = state.libraryIndex.find(function(d){ return d.id === id; });
+        return {
+          id: id,
+          name: (content && content.deckName) || (indexEntry && indexEntry.name) || 'Untitled deck',
+          chapters: content ? content.chapters : {},
+          chapterOrder: content ? content.chapterOrder : [],
+          folderShape: indexEntry ? indexEntry.folderShape : 'x',
+          folderStyle: indexEntry ? indexEntry.folderStyle : 'bright',
+          folderHue: indexEntry ? indexEntry.folderHue : 0,
+          pinned: indexEntry ? !!indexEntry.pinned : false
+        };
+      });
+    });
+    Promise.all(reads).then(function(decks){
+      var data = JSON.stringify({kind:'library-backup', decks: decks});
+      var blob = new Blob([data], {type:'application/json'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = (state.appName || 'vocab-drill').replace(/[^a-z0-9\-_ ]/gi,'').trim().replace(/\s+/g,'-') + '-library-backup.json';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Exported ' + decks.length + ' deck' + (decks.length===1?'':'s') + '~');
+    });
+  }
+
   // Build a shareable export: only term/def content for the chosen chapters, with every
   // progress field reset to defaults. Recipients get a clean, unstudied copy of the words —
   // never someone else's study history.
@@ -1007,6 +1064,10 @@
     reader.onload = function(e){
       try{
         var data = JSON.parse(e.target.result);
+        if(data.kind === 'library-backup'){
+          importWholeLibrary(data);
+          return;
+        }
         if(!data.chapters || !data.chapterOrder){ throw new Error('bad shape'); }
 
         if(data.kind === 'shareable'){
@@ -1037,6 +1098,71 @@
       }catch(err){ showToast('Could not read that file — is it a vocab export?'); }
     };
     reader.readAsText(file);
+  }
+
+  // Whole-library import: walks every deck in the bundle, checking for an ID collision
+  // against the currently-existing library. Each collision is resolved individually via
+  // an explicit prompt (skip / overwrite / import as a copy) rather than one blanket
+  // choice applied to everything, since different decks in the same bundle may warrant
+  // different treatment. Non-colliding decks import immediately with no prompt at all.
+  function importWholeLibrary(data){
+    if(!data.decks || !Array.isArray(data.decks)){ showToast('Could not read that file — is it a library backup?'); return; }
+    var queue = data.decks.slice();
+    var importedCount = 0;
+
+    function processNext(){
+      if(queue.length === 0){
+        showToast('Imported ' + importedCount + ' deck' + (importedCount===1?'':'s') + '~');
+        render();
+        return;
+      }
+      var deck = queue.shift();
+      var existing = state.libraryIndex.find(function(d){ return d.id === deck.id; });
+      if(!existing){
+        writeImportedDeck(deck, deck.id);
+        importedCount++;
+        processNext();
+      } else {
+        renderImportCollisionPrompt(deck, existing, function(choice){
+          if(choice === 'skip'){
+            // do nothing
+          } else if(choice === 'overwrite'){
+            writeImportedDeck(deck, deck.id);
+            importedCount++;
+          } else if(choice === 'copy'){
+            var newId = uid() + uid();
+            var copyName = deck.name + '_copy';
+            writeImportedDeck(Object.assign({}, deck, {name: copyName}), newId);
+            importedCount++;
+          }
+          processNext();
+        });
+      }
+    }
+    processNext();
+  }
+
+  function writeImportedDeck(deck, id){
+    var payload = JSON.stringify({chapters: deck.chapters, chapterOrder: deck.chapterOrder, deckName: deck.name});
+    storage.set(deckKey(id), payload);
+    var existingIdx = state.libraryIndex.findIndex(function(d){ return d.id === id; });
+    var entry = {
+      id: id, name: deck.name, updatedAt: Date.now(),
+      chapterCount: (deck.chapterOrder||[]).length,
+      wordCount: (deck.chapterOrder||[]).reduce(function(sum, ck){ return sum + ((deck.chapters[ck]||[]).length); }, 0),
+      folderShape: deck.folderShape || 'x', folderStyle: deck.folderStyle || 'bright', folderHue: deck.folderHue || 0,
+      pinned: !!deck.pinned
+    };
+    if(existingIdx !== -1) state.libraryIndex[existingIdx] = entry;
+    else state.libraryIndex.push(entry);
+    saveLibraryIndex();
+  }
+
+  // A dedicated confirm-style prompt with three choices instead of the usual yes/no,
+  // specifically for resolving one colliding deck at a time during a library import.
+  function renderImportCollisionPrompt(deck, existing, onChoice){
+    state.importCollision = { deck: deck, existing: existing, onChoice: onChoice };
+    render();
   }
 
   // ---------------- Theme ----------------
@@ -1781,6 +1907,7 @@
     app.appendChild(main);
     if(state.modeSheet) app.appendChild(renderModeSheet());
     if(state.confirmDialog) app.appendChild(renderConfirmDialog());
+    if(state.importCollision) app.appendChild(renderImportCollisionDialog());
     if(state.toast) app.appendChild(renderToast());
     if(state.showShortcutHint) app.appendChild(renderShortcutHint());
     if(state.sideMenuOpen){
@@ -1927,8 +2054,15 @@
   // Library-level menu content -- placeholder for now; full content (whole-library
   // export/import, restore-on-launch option) comes in a later pass.
   function buildLibraryMenuBody(body){
+    var fileInputLib = el('input',{type:'file', accept:'.json', style:'display:none', onchange:function(e){ if(e.target.files[0]) importStateFile(e.target.files[0]); }});
+    sideMenuSection(body, 'BACKUP YOUR WHOLE LIBRARY', [
+      el('p',{style:'font-size:12px; color:var(--fg-dim); margin:0 0 4px;'},[text('Every deck, its tabs, vocab, and progress, bundled into one file.')]),
+      el('button',{class:'primary-btn', onclick:exportWholeLibrary},[icon('download'), text(' Export whole library (.json)')]),
+      el('button',{class:'ghost-btn', onclick:function(){ fileInputLib.click(); }},[icon('upload'), text(' Import a library backup')]),
+      fileInputLib
+    ]);
     sideMenuSection(body, null, [
-      el('p',{style:'color:var(--fg-dim); font-size:13px;'},[text('More library-wide options are coming here soon.')])
+      el('button',{class:'toggle-chip', onclick:function(){ closeSideMenu(); state.welcomeNameDraft=''; state.screen='welcome'; render(); }},[icon('auto_stories'), text(' View welcome / restore screen')])
     ]);
   }
 
@@ -1978,6 +2112,9 @@
     }
     if(state.screen === 'select' || state.screen === 'loader'){
       actions.appendChild(el('button',{class:'icon-btn', title:'Settings', onclick:function(){ openSideMenu('deck'); }},[icon('menu')]));
+    }
+    if(state.screen === 'library'){
+      actions.appendChild(el('button',{class:'icon-btn', title:'Menu', onclick:function(){ openSideMenu('library'); }},[icon('menu')]));
     }
     var brandChildren;
     if(state.screen === 'library' || !state.activeDeckId){
@@ -2140,9 +2277,18 @@
     inner.appendChild(nameInput);
     inner.appendChild(el('p',{class:'welcome-sub'},[text('Name this however you like — the vocab torture chamber, your Korean basement, whatever. You can always rename it later from the library screen.')]));
 
+    var restoreFileInput = el('input',{type:'file', accept:'.json', style:'display:none', onchange:function(e){
+      if(e.target.files[0]){
+        finishWelcome(nameInput.value);
+        state.screen = 'library';
+        importStateFile(e.target.files[0]);
+      }
+    }});
     inner.appendChild(el('div',{class:'welcome-actions'},[
       el('button',{class:'ghost-btn', onclick:function(){ finishWelcome(nameInput.value); state.screen='onboarding'; render(); }},[text('Walk me through')]),
-      el('button',{class:'primary-btn', onclick:function(){ finishWelcome(nameInput.value); state.screen='library'; render(); }},[text('I\'ll figure it out '), icon('arrow_forward')])
+      el('button',{class:'primary-btn', onclick:function(){ finishWelcome(nameInput.value); state.screen='library'; render(); }},[text('I\'ll figure it out '), icon('arrow_forward')]),
+      el('button',{class:'ghost-btn', onclick:function(){ restoreFileInput.click(); }},[icon('upload'), text(' Restore from a backup file')]),
+      restoreFileInput
     ]));
 
     wrap.appendChild(inner);
