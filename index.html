@@ -704,7 +704,10 @@
   }
   function renderConfirmDialog(){
     var cd = state.confirmDialog;
-    var overlay = el('div',{class:'sheet-overlay', onclick:function(e){ if(e.target === e.currentTarget){ state.confirmDialog=null; render(); } }});
+    // z-index 70: must sit above the side menu (60), since any danger-zone or destructive
+    // action triggered from inside the menu needs its confirm to actually be visible and
+    // clickable, not silently buried behind the still-open menu.
+    var overlay = el('div',{class:'sheet-overlay', style:'z-index:70;', onclick:function(e){ if(e.target === e.currentTarget){ state.confirmDialog=null; render(); } }});
     var sheet = el('div',{class:'sheet'});
     sheet.appendChild(el('h3',{},[text('Are you sure?')]));
     sheet.appendChild(el('p',{class:'sub'},[text(cd.message)]));
@@ -2039,15 +2042,6 @@
         });
       }},[icon('delete'), text(' Delete this deck')])
     ]));
-    dangerChildren.push(el('div',{class:'danger-zone'},[
-      el('div',{class:'dz-title'},[text('WIPE EVERYTHING, START FRESH')]),
-      el('p',{style:'font-size:12px; color:var(--fg-dim); margin:0 0 2px;'},[text('Deletes every library, all progress, and every saved preference. Takes you back to the very first welcome screen. This can\'t be undone unless you\'ve exported backups.')]),
-      el('button',{class:'ghost-btn', style:'border-color:rgba(193,68,46,0.4); color:var(--red);', onclick:function(){
-        askConfirm('Wipe absolutely everything and start over from scratch? All libraries, all progress, and all settings will be gone for good.', function(){
-          wipeEverything();
-        });
-      }},[icon('bomb'), text(' Wipe everything, start fresh')])
-    ]));
     sideMenuSection(body, 'DANGER ZONE', dangerChildren);
   }
 
@@ -2063,6 +2057,17 @@
     ]);
     sideMenuSection(body, null, [
       el('button',{class:'toggle-chip', onclick:function(){ closeSideMenu(); state.welcomeNameDraft=''; state.screen='welcome'; render(); }},[icon('auto_stories'), text(' View welcome / restore screen')])
+    ]);
+    sideMenuSection(body, 'DANGER ZONE', [
+      el('div',{class:'danger-zone'},[
+        el('div',{class:'dz-title'},[text('WIPE EVERYTHING, START FRESH')]),
+        el('p',{style:'font-size:12px; color:var(--fg-dim); margin:0 0 2px;'},[text('Deletes every deck, all progress, and every saved preference. Takes you back to the very first welcome screen. This can\'t be undone unless you\'ve exported backups.')]),
+        el('button',{class:'ghost-btn', style:'border-color:rgba(193,68,46,0.4); color:var(--red);', onclick:function(){
+          askConfirm('Wipe absolutely everything and start over from scratch? All decks, all progress, and all settings will be gone for good.', function(){
+            wipeEverything();
+          });
+        }},[icon('bomb'), text(' Wipe everything, start fresh')])
+      ])
     ]);
   }
 
