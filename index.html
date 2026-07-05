@@ -495,6 +495,32 @@
   }
   .reorder-btn:disabled{opacity:0.25; cursor:not-allowed;}
 
+  /* Manage Library: drag-and-drop deck reordering. Pointer-based (not native HTML5 DnD)
+     so it works consistently on touch as well as mouse -- native drag-and-drop is
+     unreliable enough on mobile that it's not worth relying on for a study app that's
+     mostly used on phones. */
+  .lib-manage-row{
+    display:flex; align-items:center; gap:10px; background:var(--panel);
+    border:1px solid var(--panel-border); border-radius:12px; padding:10px 12px;
+    touch-action:none; user-select:none;
+  }
+  .lib-manage-row.dragging{opacity:0.4;}
+  .lib-manage-row.drop-target{border-color:var(--jade); border-width:2px;}
+  .lib-drag-handle{
+    display:flex; align-items:center; justify-content:center; width:28px; height:36px;
+    color:var(--fg-dimmer); cursor:grab; flex-shrink:0; touch-action:none;
+  }
+  .lib-manage-row .lib-thumb{width:40px; height:40px; border-radius:8px; flex-shrink:0; overflow:hidden;}
+  .lib-manage-row .lib-thumb svg{width:100%; height:100%; display:block;}
+  .lib-manage-info{flex:1; min-width:0;}
+  .lib-manage-info .t-name{font-family:'Noto Serif KR'; font-size:14.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .lib-manage-info .t-meta{font-size:11px; color:var(--fg-dim);}
+  .lib-manage-del{
+    width:36px; height:36px; border-radius:8px; border:1px solid rgba(193,68,46,0.3);
+    background:none; color:var(--red); cursor:pointer; display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+
   .danger-zone .dz-title{font-size:12.5px; font-weight:700; color:var(--red);}
   .reset-progress-zone{border:1px solid var(--panel-border); background:var(--panel); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:8px; margin-top:18px;}
   .folder-picker{display:flex; flex-direction:column; gap:10px; margin:10px 0 16px;}
@@ -1903,6 +1929,7 @@
     else if(state.screen === 'select') main.appendChild(renderSelect());
     else if(state.screen === 'chapterDetail') main.appendChild(renderChapterDetail());
     else if(state.screen === 'reorder') main.appendChild(renderReorderChapters());
+    else if(state.screen === 'manageLibrary') main.appendChild(renderManageLibrary());
     else if(state.screen === 'flaggedDetail') main.appendChild(renderFlaggedDetail());
     else if(state.screen === 'exportPicker') main.appendChild(renderExportPicker());
     else if(state.screen === 'drill') main.appendChild(renderDrillRouter());
@@ -2048,6 +2075,9 @@
   // Library-level menu content -- placeholder for now; full content (whole-library
   // export/import, restore-on-launch option) comes in a later pass.
   function buildLibraryMenuBody(body){
+    sideMenuSection(body, null, [
+      el('button',{class:'toggle-chip', onclick:function(){ closeSideMenu(); state.screen='manageLibrary'; render(); }},[icon('swap_vert'), text(' Manage library (reorder / delete)')])
+    ]);
     var fileInputLib = el('input',{type:'file', accept:'.json', style:'display:none', onchange:function(e){ if(e.target.files[0]) importStateFile(e.target.files[0]); }});
     sideMenuSection(body, 'BACKUP YOUR WHOLE LIBRARY', [
       el('p',{style:'font-size:12px; color:var(--fg-dim); margin:0 0 4px;'},[text('Every deck, its tabs, vocab, and progress, bundled into one file.')]),
@@ -2195,11 +2225,6 @@
 
   function renderLoader(){
     var wrap = el('div',{class:'loader-wrap'});
-    if(!storage.isNative){
-      wrap.appendChild(el('div',{class:'error-msg', style:'margin-bottom:14px; background:var(--panel); border-color:var(--panel-border); color:var(--fg-dim);'},[
-        text('Saving to this browser\'s local storage rather than Claude\'s — that\'s expected outside a Claude artifact preview (e.g. GitHub Pages, a downloaded local file). It persists here, but won\'t carry over to a different browser or device unless you export a backup.')
-      ]));
-    }
     wrap.appendChild(el('h1',{},[text('Paste in your vocab~')]));
     wrap.appendChild(el('p',{},[text('One tab header per line, then '), el('strong',{},[text('term | meaning')]), text(' pairs. Blank lines between tabs are fine, not required.')]));
     var ta = el('textarea',{placeholder:'CH1\nparola | word, term\nfrase | phrase\n\nCH2\n...'});
@@ -2339,11 +2364,11 @@
       el('p',{},[text(state.libraryIndex.length ? 'Pick a deck to study or create a new one.' : 'No decks yet — start your first one below.')])
     ]));
 
-    var sorted = state.libraryIndex.slice().sort(function(a,b){
-      var pinDiff = (b.pinned?1:0) - (a.pinned?1:0);
+    var sorted = state.libraryIndex.map(function(d,i){ return {d:d, i:i}; }).sort(function(a,b){
+      var pinDiff = (b.d.pinned?1:0) - (a.d.pinned?1:0);
       if(pinDiff !== 0) return pinDiff;
-      return (b.updatedAt||0) - (a.updatedAt||0);
-    });
+      return a.i - b.i;
+    }).map(function(x){ return x.d; });
     var grid = el('div',{class:'ticket-grid deck-grid'});
     sorted.forEach(function(d){
       var wordCount = d.wordCount || 0;
@@ -2466,6 +2491,141 @@
     var tmp = arr[idx]; arr[idx] = arr[newIdx]; arr[newIdx] = tmp;
     saveToStorage();
   }
+  // ---- Manage Library screen: drag-and-drop reorder + delete for whole decks ----
+  // Pointer-based drag (not native HTML5 drag-and-drop) so it behaves consistently on
+  // touch as well as mouse. Up/down buttons stay available alongside the drag handle as
+  // a reliable fallback -- drag-only reordering with no alternative is a real gap for
+  // anyone who can't or doesn't want to drag.
+  function renderManageLibrary(){
+    var wrap = el('div',{});
+    wrap.appendChild(el('button',{class:'back-link', onclick:function(){ state.screen='library'; render(); }},[icon('arrow_back'), text(' Back')]));
+    wrap.appendChild(el('h1',{},[text('Manage Library')]));
+    wrap.appendChild(el('p',{class:'sub'},[text('Drag to reorder, or use the arrows. Pinned decks always stay grouped at the top.')]));
+
+    var list = el('div',{class:'word-list'});
+    var rows = [];
+
+    function moveDeckBy(id, direction){
+      var idx = state.libraryIndex.findIndex(function(d){ return d.id === id; });
+      var newIdx = idx + direction;
+      if(idx === -1 || newIdx < 0 || newIdx >= state.libraryIndex.length) return;
+      var arr = state.libraryIndex;
+      var tmp = arr[idx]; arr[idx] = arr[newIdx]; arr[newIdx] = tmp;
+      saveLibraryIndex();
+      render();
+    }
+
+    function moveDeckToIndex(id, targetIdx){
+      var idx = state.libraryIndex.findIndex(function(d){ return d.id === id; });
+      if(idx === -1 || idx === targetIdx) return;
+      var arr = state.libraryIndex;
+      var item = arr.splice(idx, 1)[0];
+      arr.splice(targetIdx, 0, item);
+      saveLibraryIndex();
+      render();
+    }
+
+    state.libraryIndex.forEach(function(d, i){
+      var row = el('div',{class:'lib-manage-row', 'data-deck-id':d.id});
+      var handle = el('div',{class:'lib-drag-handle'},[icon('swap_vert')]);
+      var thumb = el('div',{class:'lib-thumb'},[renderFolder(d.folderShape||'x', d.folderStyle||'bright', d.folderHue||0, 'manage-'+d.id)]);
+      var wordCount = d.wordCount || 0, chapterCount = d.chapterCount || 0;
+      var info = el('div',{class:'lib-manage-info'},[
+        el('div',{class:'t-name kr'},[text(d.name || 'Untitled deck')]),
+        el('div',{class:'t-meta'},[text((d.pinned?'★ ':'') + chapterCount + (chapterCount===1?' tab · ':' tabs · ') + wordCount + (wordCount===1?' word':' words'))])
+      ]);
+      var upDown = el('div',{class:'reorder-controls'},[
+        el('button',{class:'reorder-btn', disabled: i===0, onclick:function(){ moveDeckBy(d.id, -1); }},[icon('keyboard_arrow_up')]),
+        el('button',{class:'reorder-btn', disabled: i===state.libraryIndex.length-1, onclick:function(){ moveDeckBy(d.id, 1); }},[icon('keyboard_arrow_down')])
+      ]);
+      var delBtn = el('button',{class:'lib-manage-del', title:'Delete this deck', onclick:function(){
+        askConfirm('Delete "' + (d.name||'this deck') + '" entirely? All its tabs and progress will be lost unless you exported a backup.', function(){
+          deleteDeckEntirely(d.id);
+          render();
+        });
+      }},[icon('delete')]);
+
+      row.appendChild(handle);
+      row.appendChild(thumb);
+      row.appendChild(info);
+      row.appendChild(upDown);
+      row.appendChild(delBtn);
+      rows.push(row);
+      list.appendChild(row);
+    });
+    wrap.appendChild(list);
+
+    // ---- Pointer-based drag logic ----
+    // Move/up listeners live on document (not the handle itself) for the duration of an
+    // active drag, since relying on pointer capture to keep tracking movement off the
+    // small handle element isn't reliable everywhere -- this way dragging keeps working
+    // correctly regardless of exactly where the pointer ends up during the drag.
+    var dragState = null;
+
+    function onDragMove(e){
+      if(!dragState) return;
+      var deltaY = e.clientY - dragState.startY;
+      dragState.row.style.transform = 'translateY(' + deltaY + 'px)';
+      dragState.row.style.zIndex = '10';
+      dragState.row.style.position = 'relative';
+
+      var pointerY = e.clientY;
+      rows.forEach(function(r){ r.classList.remove('drop-target'); });
+      for(var j=0;j<rows.length;j++){
+        if(rows[j] === dragState.row) continue;
+        var rect = rows[j].getBoundingClientRect();
+        if(pointerY >= rect.top && pointerY <= rect.bottom){
+          rows[j].classList.add('drop-target');
+          dragState.currentTargetIndex = j;
+          break;
+        }
+      }
+    }
+    function endDrag(){
+      if(!dragState) return;
+      dragState.row.classList.remove('dragging');
+      dragState.row.style.transform = '';
+      dragState.row.style.zIndex = '';
+      dragState.row.style.position = '';
+      rows.forEach(function(r){ r.classList.remove('drop-target'); });
+      document.removeEventListener('pointermove', onDragMove);
+      document.removeEventListener('pointerup', onDragUp);
+      document.removeEventListener('pointercancel', onDragCancel);
+      if(dragState.currentTargetIndex !== dragState.originalIndex){
+        moveDeckToIndex(dragState.id, dragState.currentTargetIndex);
+      }
+      dragState = null;
+    }
+    function onDragUp(){ endDrag(); }
+    function onDragCancel(){
+      if(!dragState) return;
+      dragState.row.classList.remove('dragging');
+      dragState.row.style.transform = '';
+      dragState.row.style.zIndex = '';
+      dragState.row.style.position = '';
+      rows.forEach(function(r){ r.classList.remove('drop-target'); });
+      document.removeEventListener('pointermove', onDragMove);
+      document.removeEventListener('pointerup', onDragUp);
+      document.removeEventListener('pointercancel', onDragCancel);
+      dragState = null;
+    }
+
+    rows.forEach(function(row, i){
+      var handle = row.querySelector('.lib-drag-handle');
+      handle.addEventListener('pointerdown', function(e){
+        e.preventDefault();
+        var deckId = row.getAttribute('data-deck-id');
+        dragState = { id: deckId, startY: e.clientY, row: row, originalIndex: i, currentTargetIndex: i };
+        row.classList.add('dragging');
+        document.addEventListener('pointermove', onDragMove);
+        document.addEventListener('pointerup', onDragUp);
+        document.addEventListener('pointercancel', onDragCancel);
+      });
+    });
+
+    return wrap;
+  }
+
   function renderReorderChapters(){
     var wrap = el('div',{});
     wrap.appendChild(el('button',{class:'back-link', onclick:function(){ state.screen='select'; render(); }},[icon('arrow_back'), text(' Back')]));
@@ -2831,8 +2991,8 @@
     sheet.appendChild(el('p',{class:'sub'},[text('Pick your study mode')]));
 
     sheet.appendChild(el('div',{class:'direction-toggle'},[
-      el('button',{class:'toggle-chip'+(!state.modeSheetReversed?' active':''), onclick:function(){ state.modeSheetReversed=false; render(); }},[text('TERM → DEFINITION')]),
-      el('button',{class:'toggle-chip'+(state.modeSheetReversed?' active':''), onclick:function(){ state.modeSheetReversed=true; render(); }},[text('DEFINITION → TERM')])
+      el('button',{class:'toggle-chip'+(!state.modeSheetReversed?' active':''), onclick:function(){ state.modeSheetReversed=false; render(); }},[text('TERM FIRST')]),
+      el('button',{class:'toggle-chip'+(state.modeSheetReversed?' active':''), onclick:function(){ state.modeSheetReversed=true; render(); }},[text('DEFINITION FIRST')])
     ]));
 
     var options = [
