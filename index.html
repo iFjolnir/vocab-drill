@@ -189,6 +189,17 @@
   .folder-ticket .t-name{color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.4); font-size:8.5cqw;}
   .folder-ticket .t-meta{color:rgba(255,255,255,0.85); text-shadow:0 1px 2px rgba(0,0,0,0.4); font-size:5.75cqw;}
   .ticket .t-acc{font-family:'Noto Serif KR'; font-size:20px; font-weight:900;}
+  .progress-ring-track{color:var(--panel-border);}
+  .progress-ring-fill{transition:stroke-dashoffset .4s ease;}
+  .ring-good .progress-ring-fill{color:var(--jade);}
+  .ring-mid .progress-ring-fill{color:var(--gold);}
+  .ring-low .progress-ring-fill{color:var(--red);}
+  .progress-ring-wrap{position:relative; display:inline-flex; align-items:center; justify-content:center;}
+  .progress-ring-label{position:absolute; font-size:9.5px; font-weight:700; color:var(--fg);}
+  .ring-flag-center{display:flex; flex-direction:column; align-items:center; gap:0; color:var(--red);}
+  .ring-flag-ico{width:10px; height:10px;}
+  .ring-flag-count{font-size:8px; font-weight:700; line-height:1; margin-top:1px;}
+  .progress-ring.has-flag-center .progress-ring-fill{opacity:0.55;}
   .ticket .t-acc.na{color:var(--fg-dimmer); font-size:13px; font-weight:600; font-family:'Inter';}
   .ticket .t-flag{font-size:10.5px; color:var(--red); font-weight:700; display:flex; align-items:center; gap:3px;}
   .ticket .mode-row{display:flex; gap:6px; margin-top:2px;}
@@ -309,6 +320,8 @@
     transform-style:preserve-3d; transition:transform .45s cubic-bezier(.2,.8,.2,1);
   }
   .flashcard.flipped{transform:rotateY(180deg);}
+  .flashcard-shell.swipe-good .flashcard{box-shadow:0 0 0 3px var(--jade);}
+  .flashcard-shell.swipe-bad .flashcard{box-shadow:0 0 0 3px var(--red);}
   .face{
     position:absolute; inset:0; backface-visibility:hidden; border-radius:20px;
     background:var(--card-front-bg); color:var(--card-front-fg);
@@ -479,7 +492,6 @@
   }
   .word-del-btn.add{color:var(--jade); border-color:rgba(91,140,123,0.4); font-size:20px; font-weight:700;}
   .add-row{margin-top:4px;}
-  .bulk-add-block{margin-top:18px;}
   .reorder-row{
     display:flex; justify-content:space-between; align-items:center; gap:14px;
     background:var(--panel); border:1px solid var(--panel-border); border-radius:12px; padding:12px 16px;
@@ -520,6 +532,30 @@
     background:none; color:var(--red); cursor:pointer; display:flex; align-items:center; justify-content:center;
     flex-shrink:0;
   }
+
+  /* Manage Library grid tiles: same folder-ticket visuals as the real Library screen,
+     with small overlay controls for editing/deleting/reordering directly on each tile. */
+  .manage-tile{cursor:grab;}
+  .manage-tile.dragging{cursor:grabbing; opacity:0.85; box-shadow:0 12px 28px rgba(0,0,0,0.4);}
+  .manage-tile.drop-target{outline:2px solid var(--jade); outline-offset:2px;}
+  .manage-tile-controls{
+    position:absolute; top:8px; right:8px; z-index:2; display:flex; gap:5px;
+  }
+  .manage-tile-btn{
+    width:28px; height:28px; border-radius:7px; border:none; background:rgba(0,0,0,0.45);
+    color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    backdrop-filter:blur(2px);
+  }
+  .manage-tile-btn svg{width:15px; height:15px;}
+  .manage-tile-btn.manage-tile-del{color:#ff8a75;}
+  .manage-tile-updown{
+    position:absolute; top:8px; left:8px; z-index:2; display:flex; flex-direction:column; gap:3px;
+  }
+  .manage-tile-updown .reorder-btn{
+    width:26px; height:22px; background:rgba(0,0,0,0.45); border:none; color:#fff; backdrop-filter:blur(2px);
+  }
+  .manage-tile-updown .reorder-btn svg{width:14px; height:14px;}
+  .manage-tile-updown .reorder-btn:disabled{opacity:0.2;}
 
   .danger-zone .dz-title{font-size:12.5px; font-weight:700; color:var(--red);}
   .reset-progress-zone{border:1px solid var(--panel-border); background:var(--panel); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:8px; margin-top:18px;}
@@ -1382,6 +1418,83 @@
 
   // ---- flip mode actions ----
   function flipCard(){ if(!state.session) return; state.session.flipped = !state.session.flipped; render(); }
+
+  // Swipe gestures for flip mode: swipe right = Got it, swipe left = Missed it. A single
+  // swipe both reveals and judges the card in one motion -- matching how a physical
+  // flashcard actually gets used, not a flip-then-wait-for-a-second-gesture pattern,
+  // since requiring two swipes per card would fight the whole point of swiping being
+  // the fast path. A tap (no meaningful movement) still just flips, same as clicking, so
+  // you can still check a card slowly when you want to. Vertical scrolling is
+  // deliberately left alone -- only a clearly horizontal gesture is treated as a swipe,
+  // so the page can still scroll normally on a tall drill screen.
+  function attachSwipeHandlers(shellEl, cardEl){
+    var SWIPE_THRESHOLD = 80;
+    var TAP_THRESHOLD = 10;
+    var HORIZONTAL_INTENT_RATIO = 1.5; // how much more horizontal than vertical movement must be before we treat it as a swipe, not a scroll
+    var touchState = null;
+
+    shellEl.addEventListener('touchstart', function(e){
+      if(e.touches.length !== 1) return;
+      touchState = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, dragging: false, committedHorizontal: false };
+    }, {passive: true});
+
+    shellEl.addEventListener('touchmove', function(e){
+      if(!touchState || e.touches.length !== 1) return;
+      var dx = e.touches[0].clientX - touchState.startX;
+      var dy = e.touches[0].clientY - touchState.startY;
+      if(!touchState.committedHorizontal){
+        if(Math.abs(dx) < TAP_THRESHOLD && Math.abs(dy) < TAP_THRESHOLD) return;
+        // Decide once, early, whether this gesture is horizontal (swipe) or vertical
+        // (scroll) -- and stick with that decision for the rest of the gesture.
+        touchState.committedHorizontal = Math.abs(dx) > Math.abs(dy) * HORIZONTAL_INTENT_RATIO;
+        if(!touchState.committedHorizontal) return; // let the page scroll normally
+      }
+      touchState.dragging = true;
+      touchState.dx = dx;
+      e.preventDefault();
+      cardEl.style.transition = 'none';
+      cardEl.style.transform = 'translateX(' + dx + 'px) rotate(' + (dx/20) + 'deg)';
+      cardEl.classList.toggle('swipe-good', dx > SWIPE_THRESHOLD*0.4);
+      cardEl.classList.toggle('swipe-bad', dx < -SWIPE_THRESHOLD*0.4);
+    }, {passive: false});
+
+    shellEl.addEventListener('touchend', function(e){
+      if(!touchState) return;
+      var wasDragging = touchState.dragging;
+      var dx = touchState.dx || 0;
+      cardEl.style.transition = '';
+      cardEl.style.transform = '';
+      cardEl.classList.remove('swipe-good', 'swipe-bad');
+      if(wasDragging && Math.abs(dx) >= SWIPE_THRESHOLD){
+        e.preventDefault(); // stop the synthetic click that would otherwise follow
+        var s = state.session;
+        if(s){
+          // A single swipe both reveals and judges in one motion -- matching how
+          // physical flashcards actually get used (flip-and-know, not flip-then-wait-
+          // for-a-second-gesture). Requiring two swipes per card fights the whole point
+          // of swiping being the fast path.
+          if(!s.flipped) s.flipped = true;
+          markFlip(dx > 0);
+        }
+      } else if(wasDragging){
+        // dragged but not far enough to count as a swipe -- snapped back, no action.
+        // Also suppress the synthetic click here since a real drag happened.
+        e.preventDefault();
+      }
+      // A plain tap (wasDragging === false) intentionally falls through and lets the
+      // browser's normal synthetic click fire, which the card's own onclick=flipCard
+      // already handles -- so a simple tap is never double-handled.
+      touchState = null;
+    });
+
+    shellEl.addEventListener('touchcancel', function(){
+      cardEl.style.transition = '';
+      cardEl.style.transform = '';
+      cardEl.classList.remove('swipe-good', 'swipe-bad');
+      touchState = null;
+    });
+  }
+
   function markFlip(gotIt){
     var s = state.session; if(!s) return;
     var current = s.queue[s.index]; var w = current.ref;
@@ -1611,6 +1724,68 @@
     path.setAttribute('fill', 'currentColor');
     svg.appendChild(path);
     return svg;
+  }
+
+  // Circular progress ring replacing the old plain "56%" text on tab tickets -- a
+  // percentage alone doesn't carry much visual weight; a ring reads faster at a glance
+  // and scales better across the range without needing to actually read a number.
+  function progressRing(pct, opts){
+    opts = opts || {};
+    var size = opts.size || 34;
+    var stroke = opts.stroke || 3.5;
+    var r = (size - stroke) / 2;
+    var circumference = 2 * Math.PI * r;
+    var offset = circumference * (1 - Math.max(0, Math.min(100, pct)) / 100);
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + size + ' ' + size);
+    svg.setAttribute('width', size); svg.setAttribute('height', size);
+    svg.setAttribute('class', 'progress-ring' + (opts.cls ? ' '+opts.cls : ''));
+
+    var track = document.createElementNS(ns, 'circle');
+    track.setAttribute('cx', size/2); track.setAttribute('cy', size/2); track.setAttribute('r', r);
+    track.setAttribute('fill', 'none');
+    track.setAttribute('stroke', 'currentColor');
+    track.setAttribute('class', 'progress-ring-track');
+    track.setAttribute('stroke-width', stroke);
+    svg.appendChild(track);
+
+    var fill = document.createElementNS(ns, 'circle');
+    fill.setAttribute('cx', size/2); fill.setAttribute('cy', size/2); fill.setAttribute('r', r);
+    fill.setAttribute('fill', 'none');
+    fill.setAttribute('stroke', 'currentColor');
+    fill.setAttribute('class', 'progress-ring-fill');
+    fill.setAttribute('stroke-width', stroke);
+    fill.setAttribute('stroke-linecap', 'round');
+    fill.setAttribute('stroke-dasharray', circumference);
+    fill.setAttribute('stroke-dashoffset', offset);
+    fill.setAttribute('transform', 'rotate(-90 ' + size/2 + ' ' + size/2 + ')');
+    svg.appendChild(fill);
+
+    if(opts.centerContent){
+      var wrap2 = el('div',{class:'progress-ring-wrap'});
+      wrap2.appendChild(svg);
+      wrap2.appendChild(el('span',{class:'progress-ring-label'},[opts.centerContent]));
+      return wrap2;
+    }
+    if(opts.showLabel){
+      var wrap = el('div',{class:'progress-ring-wrap'});
+      wrap.appendChild(svg);
+      wrap.appendChild(el('span',{class:'progress-ring-label'},[text(Math.round(pct)+'%')]));
+      return wrap;
+    }
+    return svg;
+  }
+
+  // Small flag+count fragment sized to fit legibly inside the progress ring's center,
+  // used in place of the percentage label when a tab has flagged words -- keeps the flag
+  // count visually anchored to the ring instead of floating as a separate stacked badge.
+  function flagCenterContent(count){
+    var frag = el('span',{class:'ring-flag-center'});
+    var flagIco = icon('flag',{cls:'ring-flag-ico'});
+    frag.appendChild(flagIco);
+    frag.appendChild(el('span',{class:'ring-flag-count'},[text(count)]));
+    return frag;
   }
 
   // ---- Folder system: deck-card artwork ----
@@ -2456,8 +2631,13 @@
           el('div',{class:'t-meta'},[text(wordCount + (wordCount===1 ? ' word' : ' words'))])
         ]),
         el('div',{class:'t-right'},[
-          acc===null ? el('div',{class:'t-acc na'},[text('new')]) : el('div',{class:'t-acc'},[text(acc+'%')]),
-          flagCount>0 ? el('div',{class:'t-flag'},[icon('flag'), text(' '+flagCount)]) : null
+          acc===null
+            ? el('div',{class:'t-acc na'},[text('new')])
+            : progressRing(acc, {
+                cls: (acc>=80?'ring-good':acc>=50?'ring-mid':'ring-low') + (flagCount>0?' has-flag-center':''),
+                centerContent: flagCount>0 ? flagCenterContent(flagCount) : null
+              }),
+          (acc===null && flagCount>0) ? el('div',{class:'t-flag'},[icon('flag'), text(' '+flagCount)]) : null
         ])
       ]);
       grid.appendChild(ticket);
@@ -2499,11 +2679,13 @@
   function renderManageLibrary(){
     var wrap = el('div',{});
     wrap.appendChild(el('button',{class:'back-link', onclick:function(){ state.screen='library'; render(); }},[icon('arrow_back'), text(' Back')]));
-    wrap.appendChild(el('h1',{},[text('Manage Library')]));
-    wrap.appendChild(el('p',{class:'sub'},[text('Drag to reorder, or use the arrows. Pinned decks always stay grouped at the top.')]));
+    wrap.appendChild(el('div',{class:'select-header'},[
+      el('h1',{},[text('Manage Library')]),
+      el('p',{},[text('Press and drag a deck to reorder it, or use the arrows. Tap the paint icon to edit its look. Pinned decks always stay grouped at the top.')])
+    ]));
 
-    var list = el('div',{class:'word-list'});
-    var rows = [];
+    var grid = el('div',{class:'ticket-grid deck-grid manage-grid'});
+    var tiles = [];
 
     function moveDeckBy(id, direction){
       var idx = state.libraryIndex.findIndex(function(d){ return d.id === id; });
@@ -2520,106 +2702,117 @@
       if(idx === -1 || idx === targetIdx) return;
       var arr = state.libraryIndex;
       var item = arr.splice(idx, 1)[0];
-      arr.splice(targetIdx, 0, item);
+      arr.splice(Math.min(targetIdx, arr.length), 0, item);
       saveLibraryIndex();
       render();
     }
 
     state.libraryIndex.forEach(function(d, i){
-      var row = el('div',{class:'lib-manage-row', 'data-deck-id':d.id});
-      var handle = el('div',{class:'lib-drag-handle'},[icon('swap_vert')]);
-      var thumb = el('div',{class:'lib-thumb'},[renderFolder(d.folderShape||'x', d.folderStyle||'bright', d.folderHue||0, 'manage-'+d.id)]);
       var wordCount = d.wordCount || 0, chapterCount = d.chapterCount || 0;
-      var info = el('div',{class:'lib-manage-info'},[
-        el('div',{class:'t-name kr'},[text(d.name || 'Untitled deck')]),
-        el('div',{class:'t-meta'},[text((d.pinned?'★ ':'') + chapterCount + (chapterCount===1?' tab · ':' tabs · ') + wordCount + (wordCount===1?' word':' words'))])
+      var tile = el('div',{class:'ticket folder-ticket manage-tile'+(d.pinned?' pinned':''), 'data-folder-shape':(d.folderShape || 'x'), 'data-deck-id':d.id},[
+        renderFolder(d.folderShape || 'x', d.folderStyle || 'bright', d.folderHue || 0, 'manage-'+d.id),
+        el('div',{class:'t-left'},[
+          d.pinned ? el('div',{class:'t-fav-row'},[(function(){ var ic=icon('favorite_fill',{cls:'pin-ico'}); ic.style.color='hsl('+(((d.folderHue||0)+180)%360)+',70%,65%)'; return ic; })()]) : null,
+          el('div',{class:'t-name kr'},[text(d.name || 'Untitled deck')]),
+          el('div',{class:'t-meta'},[text(chapterCount + (chapterCount===1?' tab':' tabs') + ' · ' + wordCount + (wordCount===1?' word':' words'))])
+        ]),
+        el('div',{class:'manage-tile-controls'},[
+          el('button',{class:'manage-tile-btn', title:'Edit folder look', onclick:function(e){ e.stopPropagation(); state.activeDeckId = d.id; state.folderEditorOpen = true; render(); }},[icon('folder_copy')]),
+          el('button',{class:'manage-tile-btn manage-tile-del', title:'Delete this deck', onclick:function(e){
+            e.stopPropagation();
+            askConfirm('Delete "' + (d.name||'this deck') + '" entirely? All its tabs and progress will be lost unless you exported a backup.', function(){
+              deleteDeckEntirely(d.id);
+              render();
+            });
+          }},[icon('delete')])
+        ]),
+        el('div',{class:'manage-tile-updown'},[
+          el('button',{class:'reorder-btn', disabled: i===0, onclick:function(e){ e.stopPropagation(); moveDeckBy(d.id, -1); }},[icon('keyboard_arrow_up')]),
+          el('button',{class:'reorder-btn', disabled: i===state.libraryIndex.length-1, onclick:function(e){ e.stopPropagation(); moveDeckBy(d.id, 1); }},[icon('keyboard_arrow_down')])
+        ])
       ]);
-      var upDown = el('div',{class:'reorder-controls'},[
-        el('button',{class:'reorder-btn', disabled: i===0, onclick:function(){ moveDeckBy(d.id, -1); }},[icon('keyboard_arrow_up')]),
-        el('button',{class:'reorder-btn', disabled: i===state.libraryIndex.length-1, onclick:function(){ moveDeckBy(d.id, 1); }},[icon('keyboard_arrow_down')])
-      ]);
-      var delBtn = el('button',{class:'lib-manage-del', title:'Delete this deck', onclick:function(){
-        askConfirm('Delete "' + (d.name||'this deck') + '" entirely? All its tabs and progress will be lost unless you exported a backup.', function(){
-          deleteDeckEntirely(d.id);
-          render();
-        });
-      }},[icon('delete')]);
-
-      row.appendChild(handle);
-      row.appendChild(thumb);
-      row.appendChild(info);
-      row.appendChild(upDown);
-      row.appendChild(delBtn);
-      rows.push(row);
-      list.appendChild(row);
+      tiles.push(tile);
+      grid.appendChild(tile);
     });
-    wrap.appendChild(list);
+    wrap.appendChild(grid);
 
-    // ---- Pointer-based drag logic ----
-    // Move/up listeners live on document (not the handle itself) for the duration of an
-    // active drag, since relying on pointer capture to keep tracking movement off the
-    // small handle element isn't reliable everywhere -- this way dragging keeps working
-    // correctly regardless of exactly where the pointer ends up during the drag.
+    // ---- Pointer-based 2D drag logic ----
+    // Move/up listeners live on document for the duration of an active drag (not the
+    // tile itself), since movement can travel well outside the tile's own bounds during
+    // a real drag and relying on pointer capture to keep tracking it isn't reliable
+    // everywhere. Drop-target detection checks both X and Y against every other tile's
+    // actual rect, since this is a 2D grid, not a single-column list.
     var dragState = null;
+    var LONG_PRESS_MS = 160;
+
+    function findDropTarget(pointerX, pointerY, excludeTile){
+      for(var j=0;j<tiles.length;j++){
+        if(tiles[j] === excludeTile) continue;
+        var rect = tiles[j].getBoundingClientRect();
+        if(pointerX >= rect.left && pointerX <= rect.right && pointerY >= rect.top && pointerY <= rect.bottom){
+          return j;
+        }
+      }
+      return null;
+    }
 
     function onDragMove(e){
       if(!dragState) return;
+      if(!dragState.active){
+        // Only start visually dragging after a small movement threshold, so a plain tap
+        // (to open the deck) doesn't get misread as the start of a drag.
+        var moved = Math.abs(e.clientX - dragState.startX) + Math.abs(e.clientY - dragState.startY);
+        if(moved < 6) return;
+        dragState.active = true;
+        dragState.tile.classList.add('dragging');
+      }
+      var deltaX = e.clientX - dragState.startX;
       var deltaY = e.clientY - dragState.startY;
-      dragState.row.style.transform = 'translateY(' + deltaY + 'px)';
-      dragState.row.style.zIndex = '10';
-      dragState.row.style.position = 'relative';
+      dragState.tile.style.transform = 'translate(' + deltaX + 'px,' + deltaY + 'px)';
+      dragState.tile.style.zIndex = '10';
 
-      var pointerY = e.clientY;
-      rows.forEach(function(r){ r.classList.remove('drop-target'); });
-      for(var j=0;j<rows.length;j++){
-        if(rows[j] === dragState.row) continue;
-        var rect = rows[j].getBoundingClientRect();
-        if(pointerY >= rect.top && pointerY <= rect.bottom){
-          rows[j].classList.add('drop-target');
-          dragState.currentTargetIndex = j;
-          break;
-        }
+      tiles.forEach(function(t){ t.classList.remove('drop-target'); });
+      var targetIdx = findDropTarget(e.clientX, e.clientY, dragState.tile);
+      if(targetIdx !== null){
+        tiles[targetIdx].classList.add('drop-target');
+        dragState.currentTargetIndex = targetIdx;
       }
     }
-    function endDrag(){
+    function cleanupDrag(){
       if(!dragState) return;
-      dragState.row.classList.remove('dragging');
-      dragState.row.style.transform = '';
-      dragState.row.style.zIndex = '';
-      dragState.row.style.position = '';
-      rows.forEach(function(r){ r.classList.remove('drop-target'); });
+      dragState.tile.classList.remove('dragging');
+      dragState.tile.style.transform = '';
+      dragState.tile.style.zIndex = '';
+      tiles.forEach(function(t){ t.classList.remove('drop-target'); });
       document.removeEventListener('pointermove', onDragMove);
       document.removeEventListener('pointerup', onDragUp);
       document.removeEventListener('pointercancel', onDragCancel);
-      if(dragState.currentTargetIndex !== dragState.originalIndex){
-        moveDeckToIndex(dragState.id, dragState.currentTargetIndex);
-      }
-      dragState = null;
     }
-    function onDragUp(){ endDrag(); }
-    function onDragCancel(){
+    function onDragUp(){
       if(!dragState) return;
-      dragState.row.classList.remove('dragging');
-      dragState.row.style.transform = '';
-      dragState.row.style.zIndex = '';
-      dragState.row.style.position = '';
-      rows.forEach(function(r){ r.classList.remove('drop-target'); });
-      document.removeEventListener('pointermove', onDragMove);
-      document.removeEventListener('pointerup', onDragUp);
-      document.removeEventListener('pointercancel', onDragCancel);
+      var wasActive = dragState.active;
+      var id = dragState.id, targetIdx = dragState.currentTargetIndex, originalIdx = dragState.originalIndex;
+      cleanupDrag();
       dragState = null;
+      if(wasActive && targetIdx !== null && targetIdx !== originalIdx){
+        moveDeckToIndex(id, targetIdx);
+      }
     }
+    function onDragCancel(){ cleanupDrag(); dragState = null; }
 
-    rows.forEach(function(row, i){
-      var handle = row.querySelector('.lib-drag-handle');
-      handle.addEventListener('pointerdown', function(e){
-        e.preventDefault();
-        var deckId = row.getAttribute('data-deck-id');
-        dragState = { id: deckId, startY: e.clientY, row: row, originalIndex: i, currentTargetIndex: i };
-        row.classList.add('dragging');
+    tiles.forEach(function(tile, i){
+      tile.addEventListener('pointerdown', function(e){
+        if(e.target.closest('.manage-tile-btn') || e.target.closest('.manage-tile-updown')) return;
+        var deckId = tile.getAttribute('data-deck-id');
+        dragState = { id: deckId, startX: e.clientX, startY: e.clientY, tile: tile, originalIndex: i, currentTargetIndex: i, active: false };
         document.addEventListener('pointermove', onDragMove);
         document.addEventListener('pointerup', onDragUp);
         document.addEventListener('pointercancel', onDragCancel);
+      });
+      tile.addEventListener('click', function(e){
+        if(e.target.closest('.manage-tile-btn') || e.target.closest('.manage-tile-updown')) return;
+        if(dragState && dragState.active) return; // suppress the click that follows a real drag
+        loadDeck(tile.getAttribute('data-deck-id'));
       });
     });
 
@@ -2629,8 +2822,10 @@
   function renderReorderChapters(){
     var wrap = el('div',{});
     wrap.appendChild(el('button',{class:'back-link', onclick:function(){ state.screen='select'; render(); }},[icon('arrow_back'), text(' Back')]));
-    wrap.appendChild(el('h1',{},[text('Reorder tabs')]));
-    wrap.appendChild(el('p',{class:'sub'},[text('Move tabs up or down — this changes the order they appear in and how "Tab N" numbering reads.')]));
+    wrap.appendChild(el('div',{class:'select-header'},[
+      el('h1',{},[text('Reorder tabs')]),
+      el('p',{},[text('Move tabs up or down — this changes the order they appear in and how "Tab N" numbering reads.')])
+    ]));
 
     var list = el('div',{class:'word-list'});
     state.chapterOrder.forEach(function(ck, i){
@@ -2656,14 +2851,19 @@
   function renderFlaggedDetail(){
     var wrap = el('div',{});
     wrap.appendChild(el('button',{class:'back-link', onclick:function(){ state.screen='select'; render(); }},[icon('arrow_back'), text(' Back')]));
-    wrap.appendChild(el('h1',{},[text('Flagged Words')]));
 
     var total = totalFlagged();
     if(total === 0){
-      wrap.appendChild(el('p',{class:'sub'},[text('Nothing flagged right now — bookmark a word during a drill, or miss it more than you get it, and it\'ll show up here.')]));
+      wrap.appendChild(el('div',{class:'select-header'},[
+        el('h1',{},[text('Flagged Words')]),
+        el('p',{},[text('Nothing flagged right now — bookmark a word during a drill, or miss it more than you get it, and it\'ll show up here.')])
+      ]));
       return wrap;
     }
-    wrap.appendChild(el('p',{class:'sub'},[text(total + ' word' + (total===1?'':'s') + ' across your tabs')]));
+    wrap.appendChild(el('div',{class:'select-header'},[
+      el('h1',{},[text('Flagged Words')]),
+      el('p',{},[text(total + ' word' + (total===1?'':'s') + ' across your tabs')])
+    ]));
 
     var drillRow = el('div',{class:'options-bar'});
     drillRow.appendChild(el('button',{class:'primary-btn', style:'flex:1;', onclick:function(){ openModeSheet(state.chapterOrder.slice(), 'flagged', 'Flagged Words'); }},[icon('play_lesson'), text(' Drill flagged words')]));
@@ -2766,7 +2966,7 @@
 
     var acc = chapterAccuracy(ck);
     var flagCount = chapterFlaggedCount(ck);
-    wrap.appendChild(el('p',{class:'sub'},[text(words.length + (words.length===1?' word':' words') + (acc!==null ? ' · ' + acc + '% accuracy' : ' · not drilled yet') + (flagCount>0 ? ' · ' + flagCount + ' struggling' : ''))]));
+    wrap.appendChild(el('p',{style:'margin:0 0 8px; font-size:12.5px; color:var(--fg-dim);'},[text(words.length + (words.length===1?' word':' words') + (acc!==null ? ' · ' + acc + '% accuracy' : ' · not drilled yet') + (flagCount>0 ? ' · ' + flagCount + ' struggling' : ''))]));
 
     if(!state.chapterEditMode){
       var drillRow = el('div',{class:'options-bar'});
@@ -2820,14 +3020,9 @@
       addRow.appendChild(newTerm); addRow.appendChild(newDef); addRow.appendChild(addBtn);
       wrap.appendChild(addRow);
 
-      wrap.appendChild(el('div',{class:'bulk-add-block'},[
-        el('div',{class:'dz-title', style:'color:var(--fg-dim);'},[text('ADD MANY AT ONCE')]),
-        el('p',{style:'font-size:12px; color:var(--fg-dim); margin:0 0 2px;'},[text('Paste ' ), el('strong',{},[text('term | definition')]), text(' lines, one per row — they\'ll all be added to "' + ck + '". Duplicates are skipped automatically.')])
-      ]));
       var bulkTa = el('textarea',{placeholder:'term one | definition one\nterm two | definition two\n...', style:'min-height:120px;'});
       bulkTa.value = state.chapterBulkInput || '';
       bulkTa.addEventListener('input', function(e){ state.chapterBulkInput = e.target.value; });
-      wrap.appendChild(bulkTa);
       var bulkBtn = el('button',{class:'ghost-btn', onclick:function(){
         var parsed = parseVocabText(state.chapterBulkInput || '', ck);
         var totalWords = 0;
@@ -2847,7 +3042,13 @@
         if(result.skippedDupes) msg += ' — ' + result.skippedDupes + ' duplicate' + (result.skippedDupes===1?'':'s') + ' skipped';
         showToast(msg);
       }},[text('Add pasted words to this tab')]);
-      wrap.appendChild(bulkBtn);
+
+      wrap.appendChild(el('div',{class:'reset-progress-zone'},[
+        el('div',{class:'dz-title', style:'color:var(--fg-dim);'},[text('ADD MANY AT ONCE')]),
+        el('p',{style:'font-size:12px; color:var(--fg-dim); margin:0 0 2px;'},[text('Paste ' ), el('strong',{},[text('term | definition')]), text(' lines, one per row — they\'ll all be added to "' + ck + '". Duplicates are skipped automatically.')]),
+        bulkTa,
+        bulkBtn
+      ]));
 
       wrap.appendChild(el('div',{class:'danger-zone'},[
         el('div',{class:'dz-title'},[text('DELETE CHAPTER')]),
@@ -3070,6 +3271,7 @@
       ])
     ]);
     stage.appendChild(cardShell);
+    attachSwipeHandlers(cardShell, cardShell);
 
     stage.appendChild(el('div',{class:'action-row'},[
       el('button',{class:'action-btn btn-wrong', onclick:function(){ markFlip(false); }},[el('span',{class:'big'},[icon('cancel')]), text('MISSED IT')]),
